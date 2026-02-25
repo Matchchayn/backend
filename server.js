@@ -265,7 +265,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
             if (resend) {
                 try {
                     const { data, error } = await resend.emails.send({
-                        from: 'Matchchayn <onboarding@matchchayn.com>',
+                        from: 'Matchchayn <support@matchchayn.com>',
                         to: email,
                         subject: mailOptions.subject,
                         html: mailOptions.html
@@ -634,7 +634,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
             if (resend) {
                 try {
                     const { data, error } = await resend.emails.send({
-                        from: 'Matchchayn <onboarding@matchchayn.com>',
+                        from: 'Matchchayn <support@matchchayn.com>',
                         to: email,
                         subject: mailOptions.subject,
                         html: mailOptions.html
