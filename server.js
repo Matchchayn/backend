@@ -708,11 +708,15 @@ app.post('/api/auth/reset-password', async (req, res) => {
             return res.status(400).json({ message: 'Invalid or expired OTP' });
         }
 
+        console.log(`📝 Resetting password for user: ${email}`);
         user.password = newPassword;
         user.otp = undefined;
         user.otpExpires = undefined;
         user.lastPasswordReset = Date.now();
+
+        console.log(`💾 Attempting to save user with new password...`);
         await user.save();
+        console.log(`✅ User reset successfully. Password hashed? ${user.password.startsWith('$2')}`);
 
         res.json({ message: 'Password reset successful. You can now login.' });
     } catch (err) {
