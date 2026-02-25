@@ -235,8 +235,6 @@ app.post('/api/auth/send-otp', async (req, res) => {
         const today = new Date().setHours(0, 0, 0, 0);
         const lastSent = user.lastOtpSent ? new Date(user.lastOtpSent).setHours(0, 0, 0, 0) : null;
 
-        /* 
-        // Temporarily disabled for debugging
         if (lastSent === today) {
             if (user.otpCount >= 2) {
                 return res.status(429).json({ message: 'Daily limit reached: You can only request 2 signup codes per day.' });
@@ -246,15 +244,12 @@ app.post('/api/auth/send-otp', async (req, res) => {
             user.otpCount = 1;
         }
         user.lastOtpSent = new Date();
-        */
 
         // Generate 4-digit OTP
         const otp = Math.floor(1000 + Math.random() * 9000).toString();
         user.otp = otp;
         user.otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
         await user.save();
-
-        console.log(`📩 OTP for ${email}: ${otp}`); // Log for testing
 
         // Send Email
         const mailOptions = {
@@ -339,15 +334,12 @@ app.post('/api/auth/signup', async (req, res) => {
             return res.status(400).json({ message: 'Invalid session or expired OTP' });
         }
 
-        console.log(`📝 Setting password for user: ${email}`);
         user.password = password;
         user.isVerified = true;
         user.otp = undefined;
         user.otpExpires = undefined;
 
-        console.log(`💾 Attempting to save user with password...`);
         await user.save();
-        console.log(`✅ User saved successfully. Password hashed? ${user.password.startsWith('$2')}`);
 
         const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '7d' });
         res.status(201).json({
@@ -386,7 +378,6 @@ app.post('/api/auth/login', async (req, res) => {
         const userResponse = user.toObject();
         delete userResponse.password;
 
-        console.log(`✅ Login successful: ${email}`);
         res.json({
             token,
             user: userResponse
@@ -611,8 +602,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
             return res.status(404).json({ message: 'User with this email not found' });
         }
 
-        /* 
-        // Temporarily disabled for debugging password mismatch
+        // 24 Hour Security Check
         if (user.lastPasswordReset) {
             const twentyFourHours = 24 * 60 * 60 * 1000;
             const timeSinceLastReset = Date.now() - new Date(user.lastPasswordReset).getTime();
@@ -638,14 +628,11 @@ app.post('/api/auth/forgot-password', async (req, res) => {
             user.resetOtpCount = 1;
         }
         user.lastResetOtpSent = new Date();
-        */
 
         const otp = Math.floor(1000 + Math.random() * 9000).toString();
         user.otp = otp;
         user.otpExpires = Date.now() + 10 * 60 * 1000;
         await user.save();
-
-        console.log(`📩 Password Reset OTP for ${email}: ${otp}`);
 
         const mailOptions = {
             from: `"Matchchayn" <${process.env.EMAIL_USER}>`,
@@ -713,15 +700,12 @@ app.post('/api/auth/reset-password', async (req, res) => {
             return res.status(400).json({ message: 'Invalid or expired OTP' });
         }
 
-        console.log(`📝 Resetting password for user: ${email}`);
         user.password = newPassword;
         user.otp = undefined;
         user.otpExpires = undefined;
         user.lastPasswordReset = Date.now();
 
-        console.log(`💾 Attempting to save user with new password...`);
         await user.save();
-        console.log(`✅ User reset successfully. Password hashed? ${user.password.startsWith('$2')}`);
 
         res.json({ message: 'Password reset successful. You can now login.' });
     } catch (err) {

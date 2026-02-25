@@ -86,26 +86,18 @@ userSchema.index({ matches: 1 });
 // Hash password before saving
 userSchema.pre('save', async function (next) {
     if (!this.isModified('password')) return next();
-    console.log(`🔐 Hashing password for user: ${this.email}`);
     try {
         this.password = await bcrypt.hash(this.password, 10);
-        console.log(`✅ Password hashed successfully`);
         next();
     } catch (err) {
-        console.error('❌ Error hashing password:', err);
         next(err);
     }
 });
 
 // Method to compare password
 userSchema.methods.comparePassword = async function (candidatePassword) {
-    if (!this.password) {
-        console.warn(`⚠️ comparePassword: No password set for user: ${this.email}`);
-        return false;
-    }
-    const match = await bcrypt.compare(candidatePassword, this.password);
-    console.log(`🔍 Password comparison for ${this.email}: ${match ? 'MATCH' : 'MISMATCH'}`);
-    return match;
+    if (!this.password) return false;
+    return await bcrypt.compare(candidatePassword, this.password);
 };
 
 module.exports = mongoose.model('User', userSchema);
