@@ -231,8 +231,8 @@ app.post('/api/auth/send-otp', async (req, res) => {
             user = new User({ email });
         }
 
-        // Generate 4-digit OTP
-        const otp = Math.floor(1000 + Math.random() * 9000).toString();
+        // Generate 2-digit OTP
+        const otp = Math.floor(10 + Math.random() * 90).toString();
         user.otp = otp;
         user.otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
         await user.save();
@@ -603,7 +603,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
             }
         }
 
-        const otp = Math.floor(1000 + Math.random() * 9000).toString();
+        const otp = Math.floor(10 + Math.random() * 90).toString();
         user.otp = otp;
         user.otpExpires = Date.now() + 10 * 60 * 1000;
         await user.save();

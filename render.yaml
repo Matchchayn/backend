@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: matchchayn-backend
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        fromConfigVar: MONGODB_URI
+      - key: JWT_SECRET
+        fromConfigVar: JWT_SECRET
+      - key: EMAIL_USER2
+        fromConfigVar: EMAIL_USER2
+      - key: EMAIL_PASS2
+        fromConfigVar: EMAIL_PASS2
+      - key: GOOGLE_CLIENT_ID
+        fromConfigVar: GOOGLE_CLIENT_ID
+      - key: GOOGLE_CLIENT_SECRET
+        fromConfigVar: GOOGLE_CLIENT_SECRET
+      - key: CLOUDFLARE_ACCOUNT_ID
+        fromConfigVar: CLOUDFLARE_ACCOUNT_ID
+      - key: CLOUDFLARE_ACCESS_KEY_ID
+        fromConfigVar: CLOUDFLARE_ACCESS_KEY_ID
+      - key: CLOUDFLARE_SECRET_ACCESS_KEY
+        fromConfigVar: CLOUDFLARE_SECRET_ACCESS_KEY
+      - key: CLOUDFLARE_BUCKET_NAME
+        fromConfigVar: CLOUDFLARE_BUCKET_NAME
+      - key: CLOUDFLARE_PUBLIC_DOMAIN
+        fromConfigVar: CLOUDFLARE_PUBLIC_DOMAIN
+      - key: EMAIL_USER
+        fromConfigVar: EMAIL_USER
+      - key: EMAIL_PASS
+        fromConfigVar: EMAIL_PASS
