@@ -168,16 +168,18 @@ mongoose.set('bufferCommands', true);
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 465,
-    secure: true, // use SSL
+    secure: true,
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
     },
-    // Force IPv4 and add pooling
+    // More aggressive IPv4 forcing
     family: 4,
+    lookup: (hostname, options, callback) => {
+        dns.lookup(hostname, { family: 4 }, callback);
+    },
     pool: true,
-    maxConnections: 3,
-    maxMessages: 100
+    maxConnections: 3
 });
 
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
