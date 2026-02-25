@@ -231,8 +231,22 @@ app.post('/api/auth/send-otp', async (req, res) => {
             user = new User({ email });
         }
 
-        // Generate 2-digit OTP
-        const otp = Math.floor(10 + Math.random() * 90).toString();
+        // Daily Rate Limit for Signup (2 times per day)
+        const today = new Date().setHours(0, 0, 0, 0);
+        const lastSent = user.lastOtpSent ? new Date(user.lastOtpSent).setHours(0, 0, 0, 0) : null;
+
+        if (lastSent === today) {
+            if (user.otpCount >= 2) {
+                return res.status(429).json({ message: 'Daily limit reached: You can only request 2 signup codes per day.' });
+            }
+            user.otpCount += 1;
+        } else {
+            user.otpCount = 1;
+        }
+        user.lastOtpSent = new Date();
+
+        // Generate 4-digit OTP
+        const otp = Math.floor(1000 + Math.random() * 9000).toString();
         user.otp = otp;
         user.otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
         await user.save();
@@ -603,7 +617,21 @@ app.post('/api/auth/forgot-password', async (req, res) => {
             }
         }
 
-        const otp = Math.floor(10 + Math.random() * 90).toString();
+        // Daily Rate Limit for Reset (1 time per day)
+        const today = new Date().setHours(0, 0, 0, 0);
+        const lastResetSent = user.lastResetOtpSent ? new Date(user.lastResetOtpSent).setHours(0, 0, 0, 0) : null;
+
+        if (lastResetSent === today) {
+            if (user.resetOtpCount >= 1) {
+                return res.status(429).json({ message: 'Daily limit reached: You can only request 1 password reset code per day.' });
+            }
+            user.resetOtpCount += 1;
+        } else {
+            user.resetOtpCount = 1;
+        }
+        user.lastResetOtpSent = new Date();
+
+        const otp = Math.floor(1000 + Math.random() * 9000).toString();
         user.otp = otp;
         user.otpExpires = Date.now() + 10 * 60 * 1000;
         await user.save();

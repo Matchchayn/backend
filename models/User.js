@@ -68,7 +68,13 @@ const userSchema = new mongoose.Schema({
     matches: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     isOnline: { type: Boolean, default: false },
     lastActive: { type: Date, default: Date.now },
-    role: { type: String, enum: ['user', 'admin'], default: 'user' }
+    role: { type: String, enum: ['user', 'admin'], default: 'user' },
+
+    // OTP Rate Limiting
+    otpCount: { type: Number, default: 0 },
+    lastOtpSent: { type: Date },
+    resetOtpCount: { type: Number, default: 0 },
+    lastResetOtpSent: { type: Date }
 });
 
 // Indexes for performance
