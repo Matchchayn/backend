@@ -6,6 +6,13 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const { OAuth2Client } = require('google-auth-library');
+const dns = require('dns');
+
+// Force IPv4 as first priority (Fixes Render ENETUNREACH errors)
+if (dns.setDefaultResultOrder) {
+    dns.setDefaultResultOrder('ipv4first');
+}
+
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 require('dotenv').config();
@@ -158,11 +165,16 @@ mongoose.set('bufferCommands', true);
 
 // Nodemailer setup
 const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true, // Use SSL/TLS
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
-    }
+    },
+    // Explicitly handle socket/connection timeouts which can cause ENETUNREACH on some clouds
+    connectionTimeout: 10000,
+    socketTimeout: 10000,
 });
 
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
