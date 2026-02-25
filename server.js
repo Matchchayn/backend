@@ -14,6 +14,9 @@ if (dns.setDefaultResultOrder) {
     dns.setDefaultResultOrder('ipv4first');
 }
 
+const { Resend } = require('resend');
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 require('dotenv').config();
@@ -256,8 +259,34 @@ app.post('/api/auth/send-otp', async (req, res) => {
 
         try {
             console.log(`📤 Attempting to send OTP email to: ${email}...`);
-            await transporter.sendMail(mailOptions);
-            console.log(`✅ OTP email sent successfully via Nodemailer to: ${email}`);
+            let emailSent = false;
+
+            // 1. Try Resend (Main Production Method)
+            if (resend) {
+                try {
+                    const { data, error } = await resend.emails.send({
+                        from: 'Matchchayn <onboarding@matchchayn.com>',
+                        to: email,
+                        subject: mailOptions.subject,
+                        html: mailOptions.html
+                    });
+
+                    if (error) {
+                        console.warn(`⚠️ Resend failed:`, error);
+                    } else {
+                        console.log(`✅ OTP email sent successfully via Resend to: ${email}`);
+                        emailSent = true;
+                    }
+                } catch (resendErr) {
+                    console.warn(`⚠️ Resend caught error:`, resendErr);
+                }
+            }
+
+            // 2. Nodemailer Fallback (For Local / If Resend Fails)
+            if (!emailSent) {
+                await transporter.sendMail(mailOptions);
+                console.log(`✅ OTP email sent successfully via Nodemailer to: ${email}`);
+            }
 
             res.json({ message: 'OTP sent to your email' });
         } catch (mailErr) {
@@ -599,8 +628,34 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
         try {
             console.log(`📤 Attempting to send Reset email to: ${email}...`);
-            await transporter.sendMail(mailOptions);
-            console.log(`✅ Reset email sent successfully via Nodemailer to: ${email}`);
+            let emailSent = false;
+
+            // 1. Try Resend (Main Production Method)
+            if (resend) {
+                try {
+                    const { data, error } = await resend.emails.send({
+                        from: 'Matchchayn <onboarding@matchchayn.com>',
+                        to: email,
+                        subject: mailOptions.subject,
+                        html: mailOptions.html
+                    });
+
+                    if (error) {
+                        console.warn(`⚠️ Resend forgot-password failed:`, error);
+                    } else {
+                        console.log(`✅ Reset email sent successfully via Resend to: ${email}`);
+                        emailSent = true;
+                    }
+                } catch (resendErr) {
+                    console.warn(`⚠️ Resend caught forgot-password error:`, resendErr);
+                }
+            }
+
+            // 2. Nodemailer Fallback (For Local / If Resend Fails)
+            if (!emailSent) {
+                await transporter.sendMail(mailOptions);
+                console.log(`✅ Reset email sent successfully via Nodemailer to: ${email}`);
+            }
 
             res.json({ message: 'Reset OTP sent to your email' });
         } catch (mailErr) {
