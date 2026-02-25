@@ -166,15 +166,16 @@ mongoose.set('bufferCommands', true);
 // Nodemailer setup
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
-    port: 465,
-    secure: true, // Use SSL/TLS
+    port: 587,
+    secure: false, // use STARTTLS
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
     },
-    // Explicitly handle socket/connection timeouts which can cause ENETUNREACH on some clouds
-    connectionTimeout: 10000,
-    socketTimeout: 10000,
+    // Increased timeouts for slower cloud networking
+    connectionTimeout: 20000,
+    socketTimeout: 20000,
+    greetingTimeout: 20000
 });
 
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
