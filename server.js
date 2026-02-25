@@ -8,6 +8,7 @@ const nodemailer = require('nodemailer');
 const { OAuth2Client } = require('google-auth-library');
 const dns = require('dns');
 
+
 // Force IPv4 as first priority (Fixes Render ENETUNREACH errors)
 if (dns.setDefaultResultOrder) {
     dns.setDefaultResultOrder('ipv4first');
@@ -261,11 +262,12 @@ app.post('/api/auth/send-otp', async (req, res) => {
         try {
             console.log(`📤 Attempting to send OTP email to: ${email}...`);
             await transporter.sendMail(mailOptions);
-            console.log(`✅ OTP email sent successfully to: ${email}`);
+            console.log(`✅ OTP email sent successfully via Nodemailer to: ${email}`);
+
             res.json({ message: 'OTP sent to your email' });
         } catch (mailErr) {
-            console.error('❌ Nodemailer Error for send-otp:', mailErr);
-            res.status(500).json({ message: 'Error sending email: ' + mailErr.message });
+            console.error('❌ Email Error for send-otp:', mailErr);
+            res.status(500).json({ message: 'Error sending email. Please try again later.' });
         }
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -603,11 +605,12 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         try {
             console.log(`📤 Attempting to send Reset email to: ${email}...`);
             await transporter.sendMail(mailOptions);
-            console.log(`✅ Reset email sent successfully to: ${email}`);
+            console.log(`✅ Reset email sent successfully via Nodemailer to: ${email}`);
+
             res.json({ message: 'Reset OTP sent to your email' });
         } catch (mailErr) {
-            console.error('❌ Nodemailer Error for forgot-password:', mailErr);
-            res.status(500).json({ message: 'Error sending email: ' + mailErr.message });
+            console.error('❌ Email Error for forgot-password:', mailErr);
+            res.status(500).json({ message: 'Error sending email. Please try again later.' });
         }
     } catch (err) {
         res.status(500).json({ message: err.message });
