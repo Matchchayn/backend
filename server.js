@@ -235,6 +235,8 @@ app.post('/api/auth/send-otp', async (req, res) => {
         const today = new Date().setHours(0, 0, 0, 0);
         const lastSent = user.lastOtpSent ? new Date(user.lastOtpSent).setHours(0, 0, 0, 0) : null;
 
+        /* 
+        // Temporarily disabled for debugging
         if (lastSent === today) {
             if (user.otpCount >= 2) {
                 return res.status(429).json({ message: 'Daily limit reached: You can only request 2 signup codes per day.' });
@@ -244,6 +246,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
             user.otpCount = 1;
         }
         user.lastOtpSent = new Date();
+        */
 
         // Generate 4-digit OTP
         const otp = Math.floor(1000 + Math.random() * 9000).toString();
@@ -608,7 +611,8 @@ app.post('/api/auth/forgot-password', async (req, res) => {
             return res.status(404).json({ message: 'User with this email not found' });
         }
 
-        // 24 Hour Security Check
+        /* 
+        // Temporarily disabled for debugging password mismatch
         if (user.lastPasswordReset) {
             const twentyFourHours = 24 * 60 * 60 * 1000;
             const timeSinceLastReset = Date.now() - new Date(user.lastPasswordReset).getTime();
@@ -634,6 +638,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
             user.resetOtpCount = 1;
         }
         user.lastResetOtpSent = new Date();
+        */
 
         const otp = Math.floor(1000 + Math.random() * 9000).toString();
         user.otp = otp;
