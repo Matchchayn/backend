@@ -166,20 +166,12 @@ mongoose.set('bufferCommands', true);
 
 // Nodemailer setup
 const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
+    host: "sandbox.smtp.mailtrap.io",
+    port: 2525,
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
-    },
-    // More aggressive IPv4 forcing
-    family: 4,
-    lookup: (hostname, options, callback) => {
-        dns.lookup(hostname, { family: 4 }, callback);
-    },
-    pool: true,
-    maxConnections: 3
+    }
 });
 
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
@@ -246,7 +238,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
 
         // Send Email
         const mailOptions = {
-            from: process.env.EMAIL_USER,
+            from: `"Matchchayn" <${process.env.EMAIL_USER}>`,
             to: email,
             subject: 'Matchchayn Verification Code',
             text: `Your verification code is: ${otp}. It will expire in 10 minutes.`,
@@ -590,7 +582,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         console.log(`📩 Password Reset OTP for ${email}: ${otp}`);
 
         const mailOptions = {
-            from: process.env.EMAIL_USER,
+            from: `"Matchchayn" <${process.env.EMAIL_USER}>`,
             to: email,
             subject: 'Matchchayn Password Reset',
             html: `
