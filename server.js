@@ -336,11 +336,15 @@ app.post('/api/auth/signup', async (req, res) => {
             return res.status(400).json({ message: 'Invalid session or expired OTP' });
         }
 
+        console.log(`📝 Setting password for user: ${email}`);
         user.password = password;
         user.isVerified = true;
         user.otp = undefined;
         user.otpExpires = undefined;
+
+        console.log(`💾 Attempting to save user with password...`);
         await user.save();
+        console.log(`✅ User saved successfully. Password hashed? ${user.password.startsWith('$2')}`);
 
         const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '7d' });
         res.status(201).json({
