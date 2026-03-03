@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -8,18 +9,16 @@ const nodemailer = require('nodemailer');
 const { OAuth2Client } = require('google-auth-library');
 const dns = require('dns');
 
-
 // Force IPv4 as first priority (Fixes Render ENETUNREACH errors)
 if (dns.setDefaultResultOrder) {
     dns.setDefaultResultOrder('ipv4first');
 }
 
 const { Resend } = require('resend');
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
-
-const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
+const { S3Client, PutObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
-require('dotenv').config();
+
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const User = require('./models/User');
 const Message = require('./models/Message');
 const Notification = require('./models/Notification');
@@ -36,8 +35,9 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('🔥 CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-const http = require('http').Server(app);
-const io = require('socket.io')(http, {
+const server = require('http').createServer(app);
+const { Server } = require('socket.io');
+const io = new Server(server, {
     cors: {
         origin: "*",
         methods: ["GET", "POST"]
@@ -156,7 +156,34 @@ io.on('connection', (socket) => {
 
 // Middleware
 app.use(compression());
-app.use(cors());
+
+// Improved CORS: Allow both localhost (dev) and production domains
+const allowedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://localhost:5000',
+    'http://127.0.0.1:5173',
+    'https://matchchayn.com',
+    'https://www.matchchayn.com',
+    'https://zoological-celebration-production-e24f.up.railway.app'
+];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.indexOf(origin) !== -1 || origin.includes('railway.app')) {
+            callback(null, true);
+        } else {
+            console.log('CORS blocked origin:', origin);
+            callback(null, true); // Still allow but log for now to debug
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
+
 app.use(express.json({ limit: '10mb' }));
 
 // MongoDB Connection
@@ -188,6 +215,54 @@ const r2Client = new S3Client({
         secretAccessKey: process.env.CLOUDFLARE_SECRET_ACCESS_KEY,
     },
 });
+
+/**
+ * Helper to generate signed URLs for objects stored in Cloudflare R2
+ */
+async function signUserVideos(userObj) {
+    if (!userObj) return userObj;
+
+    // Handle both Mongoose documents and plain objects
+    const data = userObj.toObject ? userObj.toObject() : userObj;
+
+    if (!data.videoUrl) return data;
+
+    // Check if it's an R2 URL (matches bucket endpoint or the public dev domain)
+    const isR2 = data.videoUrl.includes('r2.cloudflarestorage.com') ||
+        (data.videoUrl.includes('pub-') && data.videoUrl.includes('.r2.dev'));
+
+    if (isR2) {
+        try {
+            const url = new URL(data.videoUrl);
+            // Key is the pathname without the leading slash
+            const rawKey = url.pathname.startsWith('/') ? url.pathname.substring(1) : url.pathname;
+
+            // Fully decode the key - handles both single (%20) and double (%2520) encoding
+            let decodedKey = rawKey;
+            // Keep decoding until stable (handles double-encoding like %2520 → %20 → space)
+            for (let i = 0; i < 3; i++) {
+                try {
+                    const next = decodeURIComponent(decodedKey);
+                    if (next === decodedKey) break; // stable
+                    decodedKey = next;
+                } catch (e) { break; }
+            }
+
+            const command = new GetObjectCommand({
+                Bucket: process.env.CLOUDFLARE_BUCKET_NAME,
+                Key: decodedKey
+            });
+
+            // Generate a temporary signed URL (valid for 1 hour)
+            const signedUrl = await getSignedUrl(r2Client, command, { expiresIn: 3600 });
+            return { ...data, videoUrl: signedUrl };
+        } catch (e) {
+            console.warn('⚠️ Error signing video URL for user:', data.firstName, e.message);
+            return data;
+        }
+    }
+    return data;
+}
 
 const connectDB = async () => {
     try {
@@ -248,7 +323,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
         // Generate 4-digit OTP
         const otp = Math.floor(1000 + Math.random() * 9000).toString();
         user.otp = otp;
-        user.otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+        user.otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
         await user.save();
 
         // Send Email
@@ -315,7 +390,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
         const { email, otp } = req.body;
         const user = await User.findOne({ email });
 
-        if (!user || user.otp !== otp || user.otpExpires < Date.now()) {
+        if (!user || user.otp !== otp || user.otpExpires < new Date()) {
             return res.status(400).json({ message: 'Invalid or expired OTP' });
         }
 
@@ -330,7 +405,7 @@ app.post('/api/auth/signup', async (req, res) => {
         const { email, password, otp } = req.body;
         const user = await User.findOne({ email });
 
-        if (!user || user.otp !== otp || user.otpExpires < Date.now()) {
+        if (!user || user.otp !== otp || user.otpExpires < new Date()) {
             return res.status(400).json({ message: 'Invalid session or expired OTP' });
         }
 
@@ -427,7 +502,9 @@ app.get('/api/user/profile', authenticateToken, async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
         if (!user) return res.status(404).json({ message: 'User not found' });
-        res.json(user);
+
+        const signedUser = await signUserVideos(user);
+        res.json(signedUser);
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -478,7 +555,9 @@ app.post('/api/user/interests', authenticateToken, async (req, res) => {
 app.post('/api/media/presigned-url', authenticateToken, async (req, res) => {
     try {
         const { fileName, fileType } = req.body;
-        const key = `uploads/${req.user.id}/${Date.now()}-${fileName}`;
+        // Sanitize filename to avoid weird URL encoding bugs (spaces, parens, etc)
+        const safeName = fileName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+        const key = `uploads/${req.user.id}/${Date.now()}-${safeName}`;
 
         const command = new PutObjectCommand({
             Bucket: process.env.CLOUDFLARE_BUCKET_NAME,
@@ -829,7 +908,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
         const otp = Math.floor(1000 + Math.random() * 9000).toString();
         user.otp = otp;
-        user.otpExpires = Date.now() + 10 * 60 * 1000;
+        user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
         await user.save();
 
         const mailOptions = {
@@ -894,7 +973,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
         const { email, otp, newPassword } = req.body;
         const user = await User.findOne({ email });
 
-        if (!user || user.otp !== otp || user.otpExpires < Date.now()) {
+        if (!user || user.otp !== otp || user.otpExpires < new Date()) {
             return res.status(400).json({ message: 'Invalid or expired OTP' });
         }
 
@@ -954,7 +1033,10 @@ app.get('/api/user/matches-feed', authenticateToken, async (req, res) => {
             return 0;
         });
 
-        res.json(feed.slice(0, 20));
+        // Sign all video URLs in the feed
+        const finalFeed = await Promise.all(feed.slice(0, 20).map(u => signUserVideos(u)));
+
+        res.json(finalFeed);
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -1457,7 +1539,7 @@ app.use((err, req, res, next) => {
 
 // Start Server
 const PORT = process.env.PORT || 5000;
-http.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log(`🚀 Server is running on port ${PORT}`);
 });
 
