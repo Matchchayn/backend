@@ -65,6 +65,7 @@ const userSchema = new mongoose.Schema({
         required: false
     },
     likedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    rejectedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     matches: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     isOnline: { type: Boolean, default: false },
     lastActive: { type: Date, default: Date.now },
@@ -81,6 +82,7 @@ const userSchema = new mongoose.Schema({
 
 userSchema.index({ onboardingStatus: 1 });
 userSchema.index({ likedUsers: 1 });
+userSchema.index({ rejectedUsers: 1 });
 userSchema.index({ matches: 1 });
 
 // Hash password before saving

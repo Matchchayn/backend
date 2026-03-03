@@ -209,7 +209,7 @@ connectDB();
 const checkDBConnection = (req, res, next) => {
     if (mongoose.connection.readyState !== 1) {
         return res.status(503).json({
-            message: 'Database connection is currently unavailable. Please try again in secondary.'
+            message: 'Database connection is currently unavailable. Please try again in a few seconds.'
         });
     }
     next();
@@ -517,6 +517,8 @@ app.post('/api/user/media', authenticateToken, async (req, res) => {
         const user = await User.findById(req.user.id);
         if (!user) return res.status(404).json({ message: 'User not found' });
 
+        const wasAlreadyCompleted = user.onboardingStatus === 'completed';
+
         if (avatarUrl) user.avatarUrl = avatarUrl;
         if (secondaryPhotoUrl) user.secondaryPhotoUrl = secondaryPhotoUrl;
         if (thirdPhotoUrl) user.thirdPhotoUrl = thirdPhotoUrl;
@@ -524,6 +526,102 @@ app.post('/api/user/media', authenticateToken, async (req, res) => {
 
         user.onboardingStatus = 'completed';
         await user.save();
+
+        // Send welcome email only on first-time completion
+        if (!wasAlreadyCompleted && resend && user.email) {
+            const firstName = user.firstName || 'there';
+            resend.emails.send({
+                from: 'Matchchayn <support@matchchayn.com>',
+                to: user.email,
+                subject: `Welcome to Matchchayn, ${firstName}! 🎉`,
+                html: `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Welcome to Matchchayn</title>
+</head>
+<body style="margin:0;padding:0;background-color:#090a1e;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#090a1e;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#1a1a2e,#0d0e24);border-radius:20px;border:1px solid rgba(168,85,247,0.2);overflow:hidden;max-width:600px;width:90%;">
+          
+          <!-- Header -->
+          <tr>
+            <td align="center" style="background:linear-gradient(135deg,#7c3aed,#db2777);padding:40px 30px;">
+              <p style="margin:0 0 12px 0;font-size:36px;font-weight:900;color:#fff;letter-spacing:4px;text-transform:uppercase;">MATCHCHAYN</p>
+              <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.8);letter-spacing:2px;text-transform:uppercase;">Match on your frequency, on-chain</p>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:40px 40px 20px 40px;">
+              <h1 style="margin:0 0 16px 0;color:#fff;font-size:26px;font-weight:800;">Hey ${firstName}! 🚀</h1>
+              <p style="margin:0 0 20px 0;color:rgba(255,255,255,0.75);font-size:15px;line-height:1.7;">
+                Your profile is live and you're officially part of the Matchchayn community — where meaningful connections are built on-chain.
+              </p>
+              <p style="margin:0 0 30px 0;color:rgba(255,255,255,0.75);font-size:15px;line-height:1.7;">
+                Here's what you can do right now:
+              </p>
+
+              <!-- Feature cards -->
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.3);border-radius:12px;padding:18px 20px;margin-bottom:12px;display:block;">
+                    <p style="margin:0 0 6px 0;color:#a78bfa;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">💜 Match</p>
+                    <p style="margin:0;color:rgba(255,255,255,0.7);font-size:14px;">Browse profiles and find people who vibe on your frequency.</p>
+                  </td>
+                </tr>
+                <tr><td style="height:10px;"></td></tr>
+                <tr>
+                  <td style="background:rgba(219,39,119,0.15);border:1px solid rgba(219,39,119,0.3);border-radius:12px;padding:18px 20px;">
+                    <p style="margin:0 0 6px 0;color:#f472b6;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">💬 Connect</p>
+                    <p style="margin:0;color:rgba(255,255,255,0.7);font-size:14px;">Message your matches and start real conversations — no noise, just signal.</p>
+                  </td>
+                </tr>
+                <tr><td style="height:10px;"></td></tr>
+                <tr>
+                  <td style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:18px 20px;">
+                    <p style="margin:0 0 6px 0;color:#34d399;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">⛓️ On-Chain (Coming Soon)</p>
+                    <p style="margin:0;color:rgba(255,255,255,0.7);font-size:14px;">Connect your Solana wallet and unlock blockchain-verified matching features.</p>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- CTA Button -->
+              <div style="text-align:center;margin:36px 0;">
+                <a href="https://matchchayn.com" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#db2777);color:#fff;font-weight:800;font-size:15px;text-decoration:none;padding:14px 40px;border-radius:50px;letter-spacing:1px;text-transform:uppercase;">
+                  Start Matching →
+                </a>
+              </div>
+
+              <p style="color:rgba(255,255,255,0.4);font-size:13px;line-height:1.6;text-align:center;">
+                You're receiving this because you just completed your Matchchayn profile.<br/>
+                If this wasn't you, please <a href="mailto:support@matchchayn.com" style="color:#a78bfa;text-decoration:none;">contact us</a>.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background:rgba(0,0,0,0.3);padding:20px 40px;text-align:center;border-top:1px solid rgba(168,85,247,0.1);">
+              <p style="margin:0;color:rgba(255,255,255,0.2);font-size:12px;letter-spacing:1px;">© 2025 MATCHCHAYN · Match on your frequency</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+                `
+            }).catch(err => console.error('Welcome email failed:', err.message));
+        }
+
         res.json({ message: 'Media assets updated successfully', user });
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -579,13 +677,113 @@ app.post('/api/auth/google', async (req, res) => {
                 onboardingStatus: 'started'
             });
             await user.save();
+
+            // Send welcome email to new Google users
+            if (resend) {
+                resend.emails.send({
+                    from: 'Matchchayn <support@matchchayn.com>',
+                    to: email,
+                    subject: `Welcome to Matchchayn! 🎉`,
+                    html: `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Welcome to Matchchayn</title>
+</head>
+<body style="margin:0;padding:0;background-color:#090a1e;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#090a1e;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,#1a1a2e,#0d0e24);border-radius:20px;border:1px solid rgba(168,85,247,0.2);overflow:hidden;max-width:600px;width:90%;">
+          
+          <!-- Header -->
+          <tr>
+            <td align="center" style="background:linear-gradient(135deg,#7c3aed,#db2777);padding:40px 30px;">
+              <p style="margin:0 0 12px 0;font-size:36px;font-weight:900;color:#fff;letter-spacing:4px;text-transform:uppercase;">MATCHCHAYN</p>
+              <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.8);letter-spacing:2px;text-transform:uppercase;">Match on your frequency, on-chain</p>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:40px 40px 20px 40px;">
+              <h1 style="margin:0 0 16px 0;color:#fff;font-size:26px;font-weight:800;">You're in! 🚀</h1>
+              <p style="margin:0 0 20px 0;color:rgba(255,255,255,0.75);font-size:15px;line-height:1.7;">
+                Your Google account has been successfully connected to Matchchayn — the on-chain dating platform where meaningful connections go beyond the algorithm.
+              </p>
+              <p style="margin:0 0 30px 0;color:rgba(255,255,255,0.75);font-size:15px;line-height:1.7;">
+                <strong style="color:#a78bfa;">Next step:</strong> Complete your profile so others can find and match with you!
+              </p>
+
+              <!-- Steps -->
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.3);border-radius:12px;padding:18px 20px;">
+                    <p style="margin:0 0 6px 0;color:#a78bfa;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">✏️ Step 1 · Build Your Profile</p>
+                    <p style="margin:0;color:rgba(255,255,255,0.7);font-size:14px;">Add your name, bio, city, and what you're looking for.</p>
+                  </td>
+                </tr>
+                <tr><td style="height:10px;"></td></tr>
+                <tr>
+                  <td style="background:rgba(219,39,119,0.15);border:1px solid rgba(219,39,119,0.3);border-radius:12px;padding:18px 20px;">
+                    <p style="margin:0 0 6px 0;color:#f472b6;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">🎯 Step 2 · Pick Your Interests</p>
+                    <p style="margin:0;color:rgba(255,255,255,0.7);font-size:14px;">Select from Web3, AI, Music, Travel and more to find your frequency.</p>
+                  </td>
+                </tr>
+                <tr><td style="height:10px;"></td></tr>
+                <tr>
+                  <td style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:18px 20px;">
+                    <p style="margin:0 0 6px 0;color:#34d399;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">📸 Step 3 · Upload Your Media</p>
+                    <p style="margin:0;color:rgba(255,255,255,0.7);font-size:14px;">Add a photo or short video — profiles with videos get 10x more matches!</p>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- CTA Button -->
+              <div style="text-align:center;margin:36px 0;">
+                <a href="https://matchchayn.com" style="display:inline-block;background:linear-gradient(135deg,#7c3aed,#db2777);color:#fff;font-weight:800;font-size:15px;text-decoration:none;padding:14px 40px;border-radius:50px;letter-spacing:1px;text-transform:uppercase;">
+                  Complete My Profile →
+                </a>
+              </div>
+
+              <p style="color:rgba(255,255,255,0.4);font-size:13px;line-height:1.6;text-align:center;">
+                You signed in with Google at ${new Date().toUTCString()}.<br/>
+                If this wasn't you, <a href="mailto:support@matchchayn.com" style="color:#a78bfa;text-decoration:none;">contact us immediately</a>.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background:rgba(0,0,0,0.3);padding:20px 40px;text-align:center;border-top:1px solid rgba(168,85,247,0.1);">
+              <p style="margin:0;color:rgba(255,255,255,0.2);font-size:12px;letter-spacing:1px;">© 2025 MATCHCHAYN · Match on your frequency</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+                    `
+                }).catch(err => console.error('Google signup welcome email failed:', err.message));
+            }
         }
 
         const jwtToken = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '7d' });
         console.log('Google Auth Successful for:', email);
         res.json({
             token: jwtToken,
-            user: { id: user._id, email: user.email }
+            user: {
+                id: user._id,
+                email: user.email,
+                onboardingStatus: user.onboardingStatus,
+                firstName: user.firstName,
+                lastName: user.lastName
+            }
         });
     } catch (err) {
         console.error('Final Google Auth Error:', err.message);
@@ -725,6 +923,13 @@ app.get('/api/user/matches-feed', authenticateToken, async (req, res) => {
             onboardingStatus: 'completed' // Only show users who finished onboarding
         };
 
+        // Filter by gender: Male sees Female, Female sees Male
+        if (user.gender === 'male') {
+            query.gender = 'female';
+        } else if (user.gender === 'female') {
+            query.gender = 'male';
+        }
+
         // Fetch a pool of 100 potential matches to sort
         let feed = await User.find(query)
             .limit(100)
@@ -815,9 +1020,25 @@ app.get('/api/user/likes', authenticateToken, async (req, res) => {
         const me = await User.findById(req.user.id);
         const likes = await User.find({
             likedUsers: req.user.id,
-            _id: { $nin: me.likedUsers }
+            _id: { $nin: [...me.likedUsers, ...me.rejectedUsers] }
         }).select('firstName lastName avatarUrl bio gender city interests isOnline');
         res.json(likes);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.post('/api/user/reject-like', authenticateToken, async (req, res) => {
+    try {
+        const { targetUserId } = req.body;
+        const user = await User.findById(req.user.id);
+
+        if (!user.rejectedUsers.includes(targetUserId)) {
+            user.rejectedUsers.push(targetUserId);
+            await user.save();
+        }
+
+        res.json({ message: 'Match request declined' });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -867,6 +1088,62 @@ app.post('/api/notifications/read', authenticateToken, async (req, res) => {
     }
 });
 
+app.delete('/api/notifications/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    console.log(`🗑️ DELETE /api/notifications/${id} requested for user: ${userId}`);
+
+    // 1. Validate ID format to avoid cast errors
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        console.warn(`⚠️ Invalid Notification ID format: ${id}`);
+        return res.status(400).json({ message: 'Invalid notification ID format' });
+    }
+
+    try {
+        // 2. Find the notification
+        const notification = await Notification.findById(id);
+
+        if (!notification) {
+            console.warn(`⚠️ Notification ${id} NOT FOUND.`);
+            return res.status(404).json({ message: 'Notification not found' });
+        }
+
+        // 3. Authorization check
+        const recipientId = notification.recipient.toString();
+        if (recipientId !== userId) {
+            console.warn(`🚫 User ${userId} tried to delete ${recipientId}'s notification.`);
+            return res.status(403).json({ message: 'Not authorized to delete this notification' });
+        }
+
+        // 4. Perform deletion
+        await Notification.findByIdAndDelete(id);
+
+        console.log(`✅ Notification ${id} DELETED successfully.`);
+        return res.json({ success: true, message: 'Notification deleted successfully' });
+
+    } catch (err) {
+        console.error(`🔥 ERROR in DELETE /api/notifications/${id}:`, err);
+        return res.status(500).json({
+            message: 'An error occurred while deleting the notification.',
+            details: err.message
+        });
+    }
+});
+
+app.delete('/api/notifications', authenticateToken, async (req, res) => {
+    const userId = req.user.id;
+    console.log(`🗑️ Clear all notifications requested for user: ${userId}`);
+    try {
+        const result = await Notification.deleteMany({ recipient: userId });
+        console.log(`✅ Cleared ${result.deletedCount} notifications for user: ${userId}`);
+        res.json({ success: true, message: 'All notifications cleared successfully', count: result.deletedCount });
+    } catch (err) {
+        console.error(`🔥 ERROR clearing notifications:`, err.message);
+        res.status(500).json({ message: err.message });
+    }
+});
+
 // Messaging
 app.get('/api/messages/:otherUserId', authenticateToken, async (req, res) => {
     try {
@@ -892,6 +1169,20 @@ app.post('/api/messages', authenticateToken, async (req, res) => {
             messageType: messageType || 'text'
         });
         await message.save();
+
+        // Broadcast via Socket.io for real-time delivery
+        const receiverSocketId = onlineUsers.get(receiverId);
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit('receive_message', {
+                _id: message._id,
+                content: message.content,
+                sender: message.sender,
+                receiver: message.receiver,
+                messageType: message.messageType,
+                createdAt: message.createdAt,
+                isRead: message.isRead
+            });
+        }
 
         // Also create a notification
         await new Notification({
@@ -926,7 +1217,9 @@ app.delete('/api/messages/:id', authenticateToken, async (req, res) => {
 
 app.get('/api/conversations', authenticateToken, async (req, res) => {
     try {
-        const me = await User.findById(req.user.id);
+        const userId = req.user.id;
+        const me = await User.findById(userId);
+
         // Find users that are matches
         const matches = await User.find({ _id: { $in: me.matches } })
             .select('firstName lastName avatarUrl bio isOnline');
@@ -934,18 +1227,48 @@ app.get('/api/conversations', authenticateToken, async (req, res) => {
         const conversations = await Promise.all(matches.map(async (match) => {
             const lastMessage = await Message.findOne({
                 $or: [
-                    { sender: me._id, receiver: match._id },
-                    { sender: match._id, receiver: me._id }
+                    { sender: userId, receiver: match._id },
+                    { sender: match._id, receiver: userId }
                 ]
             }).sort({ createdAt: -1 });
 
+            const unreadCount = await Message.countDocuments({
+                sender: match._id,
+                receiver: userId,
+                isRead: false
+            });
+
             return {
                 otherUser: match,
-                lastMessage: lastMessage
+                lastMessage: lastMessage,
+                unreadCount: unreadCount
             };
         }));
 
+        // Sort by last message date
+        conversations.sort((a, b) => {
+            const dateA = a.lastMessage ? new Date(a.lastMessage.createdAt) : new Date(0);
+            const dateB = b.lastMessage ? new Date(b.lastMessage.createdAt) : new Date(0);
+            return dateB - dateA;
+        });
+
         res.json(conversations);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.post('/api/messages/read/:otherUserId', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { otherUserId } = req.params;
+
+        await Message.updateMany(
+            { sender: otherUserId, receiver: userId, isRead: false },
+            { $set: { isRead: true } }
+        );
+
+        res.json({ success: true });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -954,12 +1277,13 @@ app.get('/api/conversations', authenticateToken, async (req, res) => {
 // Status System
 app.post('/api/status', authenticateToken, async (req, res) => {
     try {
-        const { imageUrl } = req.body;
+        const { imageUrl, text } = req.body;
         if (!imageUrl) return res.status(400).json({ message: 'Image URL is required' });
 
         const status = new Status({
             user: req.user.id,
             imageUrl,
+            text,
             expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
         });
 
@@ -973,10 +1297,8 @@ app.post('/api/status', authenticateToken, async (req, res) => {
 app.get('/api/status/feed', authenticateToken, async (req, res) => {
     try {
         const me = await User.findById(req.user.id);
-        const matchIds = me.matches || [];
-
         // Include my own status and my matches' statuses
-        const userIdsToFetch = [req.user.id, ...matchIds];
+        const userIdsToFetch = [me._id, ...(me.matches || [])];
 
         const statuses = await Status.find({
             user: { $in: userIdsToFetch },

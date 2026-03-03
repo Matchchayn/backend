@@ -10,6 +10,10 @@ const statusSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    text: {
+        type: String,
+        required: false
+    },
     expiresAt: {
         type: Date,
         required: true,
