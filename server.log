@@ -1,0 +1,46 @@
+--- Startup Config Check ---
+MONGODB_URI present: true
+JWT_SECRET present: true
+R2 Config present: true
+---------------------------
+🚀 Server is running on port 5000
+🔌 A user connected: 7D7-QKdsxCUpR7I3AAAB
+👤 User 699b1a8b57ae2871e1e9f83f is online
+✅ Successfully connected to MongoDB Matchchayn!
+[API] OPTIONS /api/notifications - User: unauthenticated
+[API] OPTIONS /api/user/likes - User: unauthenticated
+[API] OPTIONS /api/user/matches - User: unauthenticated
+[API] OPTIONS /api/user/likes - User: unauthenticated
+[API] OPTIONS /api/user/matches - User: unauthenticated
+[API] GET /api/notifications - User: unauthenticated
+🔔 Fetching notifications for user: 699b1a8b57ae2871e1e9f83f
+[API] GET /api/user/likes - User: unauthenticated
+[API] GET /api/user/matches - User: unauthenticated
+[API] GET /api/user/likes - User: unauthenticated
+[API] GET /api/user/matches - User: unauthenticated
+[API] OPTIONS /api/notifications - User: unauthenticated
+[API] OPTIONS /api/user/likes - User: unauthenticated
+[API] OPTIONS /api/user/matches - User: unauthenticated
+[API] OPTIONS /api/user/likes - User: unauthenticated
+[API] OPTIONS /api/user/matches - User: unauthenticated
+[API] /api/user/likes returned 0 records for 699b1a8b57ae2871e1e9f83f
+[API] GET /api/user/likes - User: unauthenticated
+[Matches] Found 5 matches for user 699b1a8b57ae2871e1e9f83f
+[API] GET /api/user/matches - User: unauthenticated
+[Matches] Returning cached matches for user 699b1a8b57ae2871e1e9f83f
+[API] GET /api/user/matches - User: unauthenticated
+[Matches] Returning cached matches for user 699b1a8b57ae2871e1e9f83f
+[API] GET /api/notifications - User: unauthenticated
+🔔 Fetching notifications for user: 699b1a8b57ae2871e1e9f83f
+[API] GET /api/conversations - User: unauthenticated
+[Conversations] Request from user 699b1a8b57ae2871e1e9f83f
+[API] GET /api/user/likes - User: unauthenticated
+[Conversations] Finding conversations for 5 matches
+[API] /api/user/likes returned 0 records for 699b1a8b57ae2871e1e9f83f
+[API] /api/user/likes returned 0 records for 699b1a8b57ae2871e1e9f83f
+[API] OPTIONS /api/notifications - User: unauthenticated
+[API] OPTIONS /api/user/likes - User: unauthenticated
+[API] OPTIONS /api/user/matches - User: unauthenticated
+[API] OPTIONS /api/user/likes - User: unauthenticated
+[API] OPTIONS /api/user/matches - User: unauthenticated
+[API] GET /api/user/matches - User: unauthenticated
