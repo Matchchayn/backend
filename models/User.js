@@ -76,6 +76,10 @@ const userSchema = new mongoose.Schema({
     lastOtpSent: { type: Date },
     resetOtpCount: { type: Number, default: 0 },
     lastResetOtpSent: { type: Date }
+}, {
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
 });
 
 // Indexes for performance

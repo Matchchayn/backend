@@ -28,6 +28,9 @@ const messageSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     }
+}, {
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
 });
 
 messageSchema.index({ sender: 1, receiver: 1, createdAt: -1 });

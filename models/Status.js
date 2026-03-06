@@ -21,4 +21,6 @@ const statusSchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
+statusSchema.index({ user: 1, createdAt: -1 });
+
 module.exports = mongoose.model('Status', statusSchema);
