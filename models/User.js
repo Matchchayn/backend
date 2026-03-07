@@ -85,6 +85,7 @@ const userSchema = new mongoose.Schema({
 // Indexes for performance
 
 userSchema.index({ onboardingStatus: 1 });
+userSchema.index({ onboardingStatus: 1, gender: 1 });
 userSchema.index({ likedUsers: 1 });
 userSchema.index({ rejectedUsers: 1 });
 userSchema.index({ matches: 1 });

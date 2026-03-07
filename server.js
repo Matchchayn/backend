@@ -31,9 +31,8 @@ const Notification = require('./models/Notification');
 const Status = require('./models/Status');
 const Event = require('./models/Event');
 
-// Disable Mongoose buffering globally to prevent the "buffering timed out after 10000ms" error
-// It is better to fail fast or handle disconnected state than to hang for 10 seconds.
-mongoose.set('bufferCommands', false);
+// Keep buffering on so brief disconnects can be smoothed by reconnect logic
+mongoose.set('bufferCommands', true);
 
 const app = express();
 
@@ -226,7 +225,7 @@ app.use(cors({
         }
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
@@ -236,9 +235,6 @@ app.use(express.json({ limit: '50mb' }));
 const uri = process.env.MONGODB_URI;
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-
-// Enable buffering (default) to handle temporary connection blips gracefully
-mongoose.set('bufferCommands', true);
 
 // Nodemailer setup
 const transporter = nodemailer.createTransport({
@@ -328,12 +324,32 @@ async function signUserMedia(userObj) {
     // List of media fields to sign
     const mediaFields = ['avatarUrl', 'secondaryPhotoUrl', 'thirdPhotoUrl', 'videoUrl'];
     
-    for (const field of mediaFields) {
-        if (data[field]) {
-            data[field] = await signUrl(data[field]);
-        }
-    }
+    // Fetch all signed URLs in parallel
+    const signedUrls = await Promise.all(
+        mediaFields.map(field => data[field] ? signUrl(data[field]) : null)
+    );
 
+    // Reattach them to the user object
+    mediaFields.forEach((field, index) => {
+        if (signedUrls[index]) {
+            data[field] = signedUrls[index];
+        }
+    });
+
+    return data;
+}
+
+/** For list views (matches, likes): sign only avatarUrl so lists load faster. */
+async function signUserMediaList(userObj) {
+    if (!userObj) return userObj;
+    const data = (userObj.toObject && typeof userObj.toObject === 'function')
+        ? userObj.toObject()
+        : JSON.parse(JSON.stringify(userObj));
+    if (data._id) {
+        data.id = data._id.toString();
+        data._id = data._id.toString();
+    }
+    if (data.avatarUrl) data.avatarUrl = await signUrl(data.avatarUrl);
     return data;
 }
 
@@ -342,23 +358,58 @@ async function signUserVideos(userObj) {
     return signUserMedia(userObj);
 }
 
+const MONGODB_OPTIONS = {
+    serverSelectionTimeoutMS: 30000,  // give Atlas replica set more time on slow networks
+    connectTimeoutMS: 30000,
+    socketTimeoutMS: 90000,
+    maxPoolSize: 50,
+    heartbeatFrequencyMS: 10000,
+};
+
 const connectDB = async () => {
     try {
-        await mongoose.connect(uri, {
-            serverSelectionTimeoutMS: 15000,
-            connectTimeoutMS: 30000,
-            socketTimeoutMS: 90000,
-            maxPoolSize: 50,
-            heartbeatFrequencyMS: 10000,
-        });
+        await mongoose.connect(uri, MONGODB_OPTIONS);
         console.log("✅ Successfully connected to MongoDB Matchchayn!");
+        return true;
     } catch (err) {
         console.error("❌ MongoDB connection error:", err.message);
-        // Don't exit process, let it retry or wait for next request
+        return false;
     }
 };
 
-connectDB();
+// Startup: retry connection with backoff (handles cold start / slow network)
+const startDbWithRetry = async (maxAttempts = 5) => {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        if (await connectDB()) return;
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 15000);
+        console.log(`⏳ MongoDB retry ${attempt}/${maxAttempts} in ${delay}ms...`);
+        await new Promise((r) => setTimeout(r, delay));
+    }
+    console.warn("⚠️ MongoDB could not connect after retries. Server will run; DB will retry on disconnect.");
+};
+
+// Reconnect when connection drops (e.g. Atlas timeout, ReplicaSetNoPrimary)
+let reconnectTimeout = null;
+const scheduleReconnect = () => {
+    if (mongoose.connection.readyState === 1) return;
+    if (reconnectTimeout) return;
+    reconnectTimeout = setTimeout(async () => {
+        reconnectTimeout = null;
+        console.log("🔄 Attempting MongoDB reconnect...");
+        await connectDB();
+    }, 5000);
+};
+
+mongoose.connection.on("disconnected", () => {
+    console.warn("⚠️ MongoDB disconnected. Will attempt reconnect in 5s.");
+    scheduleReconnect();
+});
+mongoose.connection.on("error", (err) => {
+    console.error("⚠️ MongoDB connection error (event):", err.message);
+    scheduleReconnect();
+});
+
+startDbWithRetry();
 
 // Health check middleware to ensure DB is connected before processing requests
 const checkDBConnection = (req, res, next) => {
@@ -1102,7 +1153,7 @@ app.get('/api/user/matches-feed', authenticateToken, async (req, res) => {
         // Fetch a pool of 100 potential matches to sort
         let feed = await User.find(query)
             .limit(100)
-            .select('firstName lastName bio city country gender dateOfBirth relationshipStatus avatarUrl secondaryPhotoUrl videoUrl interests isOnline')
+            .select('firstName avatarUrl secondaryPhotoUrl videoUrl city dateOfBirth interests bio')
             .lean();
 
         // Sorting Algorithm
@@ -1123,22 +1174,8 @@ app.get('/api/user/matches-feed', authenticateToken, async (req, res) => {
             return 0;
         });
 
-        // Count videos in raw feed
-        const rawVideoCount = feed.filter(u => u.videoUrl).length;
-        console.log(`[matches-feed] Raw feed has ${feed.length} users, ${rawVideoCount} with videos`);
-
         // Sign all media URLs and add explicit id field for frontend consistency
         const finalFeed = await Promise.all(feed.slice(0, 20).map(u => signUserMedia(u)));
-
-        const signedVideoCount = finalFeed.filter(u => u.videoUrl).length;
-        console.log(`[matches-feed] Signed feed has ${finalFeed.length} users, ${signedVideoCount} with videos`);
-
-        if (finalFeed.length > 0) {
-            console.log(`[matches-feed] Sample user: ${finalFeed[0].firstName}, hasVideoUrl: ${!!finalFeed[0].videoUrl}`);
-            if (finalFeed[0].videoUrl) {
-                console.log(`[matches-feed] videoUrl: ${finalFeed[0].videoUrl.substring(0, 50)}...`);
-            }
-        }
         res.json(finalFeed);
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -1214,16 +1251,14 @@ app.get('/api/user/likes', authenticateToken, async (req, res) => {
         const myId = req.user.id;
         const myObjectId = new mongoose.Types.ObjectId(myId);
 
-        console.log(`[Likes] Finding incoming likes for: ${myId}`);
         // Support both string and ObjectId in the $in query for maximum robustness
         const incomingLikes = await User.find({
             likedUsers: { $in: [myId, myObjectId, String(myId)] },
             _id: { $nin: [...myLiked, ...myRejected] }
-        }).select('firstName lastName avatarUrl bio gender city dateOfBirth videoUrl interests isOnline').lean();
+        }).select('firstName lastName avatarUrl city dateOfBirth videoUrl isOnline').lean();
 
-        const processed = await Promise.all(incomingLikes.map(u => signUserMedia(u)));
+        const processed = await Promise.all(incomingLikes.map(u => signUserMediaList(u)));
 
-        console.log(`[API] /api/user/likes returned ${processed.length} records`);
         res.json(processed);
     } catch (err) {
         console.error(`[API ERROR] /api/user/likes:`, err);
@@ -1253,19 +1288,14 @@ app.get('/api/user/liked-profiles', authenticateToken, async (req, res) => {
         if (!user) return res.status(404).json({ message: 'User not found' });
 
         const likedIds = user.likedUsers || [];
-        
-        if (user.email === 'victoriialinda998@gmail.com') {
-            console.log(`[Debug] Victoria (${user._id}) fetching ${likedIds.length} profiles...`);
-        }
 
         // Fetch profiles matching the IDs in the likedUsers array
         const profiles = await User.find({
             _id: { $in: likedIds }
-        }).select('email firstName lastName avatarUrl bio gender city videoUrl isOnline dateOfBirth').lean();
+        }).select('email firstName lastName avatarUrl city videoUrl isOnline dateOfBirth').lean();
 
-        const processed = await Promise.all(profiles.map(u => signUserMedia(u)));
+        const processed = await Promise.all(profiles.map(u => signUserMediaList(u)));
 
-        console.log(`[API] /api/user/liked-profiles returned ${processed.length} profiles for ${req.user.id}`);
         res.json(processed);
     } catch (err) {
         console.error(`[API ERROR] /api/user/liked-profiles:`, err);
@@ -1281,11 +1311,10 @@ app.get('/api/user/matches', authenticateToken, async (req, res) => {
         const matchIds = user.matches || [];
         const profiles = await User.find({
             _id: { $in: matchIds }
-        }).select('firstName lastName avatarUrl bio city videoUrl lastActive isOnline dateOfBirth').lean();
+        }).select('firstName lastName avatarUrl city videoUrl lastActive isOnline dateOfBirth').lean();
 
-        const signedMatches = await Promise.all(profiles.map(u => signUserMedia(u)));
+        const signedMatches = await Promise.all(profiles.map(u => signUserMediaList(u)));
 
-        console.log(`[API] Found ${signedMatches.length} matches for ${req.user.id}`);
         res.json(signedMatches);
     } catch (err) {
         console.error(`[API ERROR] /api/user/matches:`, err.message);
@@ -1295,7 +1324,6 @@ app.get('/api/user/matches', authenticateToken, async (req, res) => {
 
 // Notifications
 app.get('/api/notifications', authenticateToken, async (req, res) => {
-    console.log(`🔔 Fetching notifications for user: ${req.user.id}`);
     try {
         const rawNotifications = await Notification.find({ recipient: req.user.id })
             .populate('sender', 'firstName lastName avatarUrl')
@@ -1305,7 +1333,7 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
 
         const processed = await Promise.all(rawNotifications.map(async (n) => {
             if (n.sender) {
-                n.sender = await signUserMedia(n.sender);
+                n.sender = await signUserMediaList(n.sender);
             }
             return n;
         }));
@@ -1391,7 +1419,7 @@ app.get('/api/messages/:otherUserId', authenticateToken, async (req, res) => {
                 { sender: req.user.id, receiver: req.params.otherUserId },
                 { sender: req.params.otherUserId, receiver: req.user.id }
             ]
-        }).sort({ createdAt: 1 });
+        }).sort({ createdAt: 1 }).lean();
         res.json(messages);
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -1455,36 +1483,26 @@ app.delete('/api/messages/:id', authenticateToken, async (req, res) => {
 });
 
 app.get('/api/conversations', authenticateToken, async (req, res) => {
-    console.log(`[Conversations] Request from user ${req.user?.id || req.user?._id}`);
     try {
         const userId = req.user.id;
         const me = await User.findById(userId).select('matches').lean();
         if (!me) {
-            console.error('[Conversations] Current user not found:', userId);
+            console.error('[Conversations] User not found:', userId);
             return res.status(404).json({ message: 'User not found' });
         }
 
         const matchIds = me.matches || [];
+        if (matchIds.length === 0) return res.json([]);
 
-        if (matchIds.length === 0) {
-            console.log(`[Conversations] User ${userId} has no matches.`);
-            return res.json([]);
-        }
-
-        console.log(`[Conversations] Finding conversations for ${matchIds.length} matches`);
         const matches = await User.find({ _id: { $in: matchIds } })
             .select('_id firstName lastName avatarUrl bio isOnline')
             .lean();
-        console.log(`[Conversations] Found ${matches.length} matches models for conversations.`);
 
-        // Optimized batch approach for last message and unread count
         const conversations = await Promise.all(matches.map(async (match) => {
-            const matchIdStr = match._id ? match._id.toString() : 'MISSING_ID';
-            if (matchIdStr === 'MISSING_ID') {
-                console.warn('[Conversations] WARN: Match object missing _id:', match);
+            const matchIdStr = match._id ? match._id.toString() : null;
+            if (!matchIdStr) {
+                console.warn('[Conversations] Match missing _id:', match);
             }
-            
-            console.log(`[Conversations] Processing match ${matchIdStr} (${match.firstName})`);
             
             let lastMessage = null;
             try {
@@ -1504,7 +1522,7 @@ app.get('/api/conversations', authenticateToken, async (req, res) => {
                 isRead: false
             });
 
-            const signedMatch = await signUserMedia(match);
+            const signedMatch = await signUserMediaList(match);
 
             return {
                 otherUser: signedMatch,
@@ -1607,18 +1625,22 @@ app.get('/api/status/feed', authenticateToken, async (req, res) => {
 // Event System
 app.get('/api/events', authenticateToken, async (req, res) => {
     try {
+        // List view should be fast: don't populate/sign every attendee.
+        // Details endpoint (/api/events/:id) still returns full attendee objects.
         const events = await Event.find()
             .populate('createdBy', 'firstName lastName avatarUrl')
-            .populate('attendees', 'firstName lastName avatarUrl')
-            .sort({ date: 1 });
+            .sort({ date: 1 })
+            .lean();
 
         const processed = await Promise.all(events.map(async (e) => {
-            const data = e.toObject ? e.toObject() : e;
+            const data = e || {};
             if (data.createdBy) data.createdBy = await signUserMedia(data.createdBy);
-            if (data.attendees) data.attendees = await Promise.all(data.attendees.map(a => signUserMedia(a)));
             if (data.imageUrl) data.imageUrl = await signUrl(data.imageUrl);
+            // Leave attendees as ids (or array) so length/count still works client-side,
+            // but avoid populating + signing them here.
             return data;
         }));
+
         res.json(processed);
     } catch (err) {
         res.status(500).json({ message: err.message });
